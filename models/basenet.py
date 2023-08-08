@@ -172,6 +172,7 @@ class BaseNet(nn.Module):
         if val_flag:
             self.best_log_dict = log_dict
             self.best_pred_df = pred_df
+            print(self.best_pred_df)
             if self.hyper_search is True:
                 basics.save_state_dict(self.state_dict(), os.path.join(self.save_path, self.hash + '_' + str(self.seed) + '_best.pth'))
                 print('saving best model in epoch ', epoch, ' in ', os.path.join(self.save_path, self.hash + '_' + str(self.seed) + '_best.pth'))
@@ -210,6 +211,7 @@ class BaseNet(nn.Module):
     
     def record_val(self):
         overall_FPR, overall_FNR, FPRs, FNRs = calculate_FPR_FNR(self.best_pred_df, self.val_meta, self.opt)
+        #print(self.best_pred_df)
         self.best_log_dict['Overall FPR'] = overall_FPR
         self.best_log_dict['Overall FNR'] = overall_FNR
         for i, FPR in enumerate(FPRs):

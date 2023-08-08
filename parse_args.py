@@ -34,6 +34,7 @@ def collect_args():
                             'GroupDRO',
                             'BayesCNN',
                             'resamplingSWAD',
+                            'PseudoLabels',
                         ])
 
     parser.add_argument('--experiment_name', type=str, default='test')
@@ -45,14 +46,15 @@ def collect_args():
     
     parser.add_argument('--resume_path', type = str, default='', help = 'explicitly indentify checkpoint path to resume.')
     
-    parser.add_argument('--sensitive_name', default='Sex', choices=['Sex', 'Age', 'Race', 'skin_type', 'Insurance'])
+    parser.add_argument('--sensitive_name', default='Sex', choices=['Sex', 'Age', 'Race', 'skin_type', 'Insurance', 'binaryLabel'])
+    parser.add_argument('--target_attribute', default='PleuralEffusion', choices=['Pneumonia', 'Pneumothorax', 'PleuralEffusion', 'Cardiomegaly', 'Consolidation', 'Edema', 'Atelectasis'])
     parser.add_argument('--is_3d', type=bool, default=False)
     parser.add_argument('--is_tabular', type=bool, default=False)
     
     # training 
     parser.add_argument('--random_seed', type=int, default=0)
-    parser.add_argument('--batch_size', type=int, default=1024)
-    parser.add_argument('--no_cuda', dest='cuda', action='store_false')
+    parser.add_argument('--batch_size', type=int, default=1000)
+    parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--lr', type=float, default=1e-4, help = 'learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help = 'weight decay for optimizer')
     parser.add_argument('--lr_decay_rate', type=float, default=0.1, help = 'decay rate of the learning rate')
@@ -78,9 +80,9 @@ def collect_args():
     # network
     parser.add_argument('--backbone', default = 'cusResNet18', choices=['cusResNet18', 'cusResNet50','cusDenseNet121',
                                                                         'cusResNet18_3d', 'cusResNet50_3d', 'cusMLP'])
-    parser.add_argument('--pretrained', type=bool, default=True, help = 'if use pretrained ResNet backbone')
-    parser.add_argument('--output_dim', type=int, default=14, help='output dimension of the classification network')
-    parser.add_argument('--num_classes', type=int, default=14, help='number of target classes')
+    parser.add_argument('--pretrained', type=bool, default=False, help = 'if use pretrained ResNet backbone')
+    parser.add_argument('--output_dim', type=int, default=1, help='output dimension of the classification network')
+    parser.add_argument('--num_classes', type=int, default=1, help='number of target classes')
     parser.add_argument('--sens_classes', type=int, default=2, help='number of sensitive classes')
     parser.add_argument('--input_channel', type=int, default=3, help='input channel of the images')
     
@@ -134,7 +136,7 @@ def collect_args():
     parser.set_defaults(cuda=True)
     
     # logging 
-    parser.add_argument('--log_freq', type=int, default=50, help = 'logging frequency (step)')
+    parser.add_argument('--log_freq', type=int, default=1, help = 'logging frequency (step)')
     
     opt = vars(parser.parse_args())
     opt = create_exerpiment_setting(opt)
@@ -149,8 +151,6 @@ def create_exerpiment_setting(opt):
     run_hash.update(str(time.time()).encode('utf-8'))
     opt['hash'] = run_hash.hexdigest()[:10]
     print('run hash (first 10 digits): ', opt['hash'])
-    
-    opt['device'] = torch.device('cuda' if opt['cuda'] else 'cpu')
     
     opt['save_folder'] = os.path.join('your_path/fariness_data/model_records', opt['dataset_name'], opt['sensitive_name'], opt['backbone'], opt['experiment'])
     opt['resume_path'] = opt['save_folder']
@@ -201,7 +201,8 @@ def create_exerpiment_setting(opt):
         with open('configs/wandb_init.json') as f:
             wandb_args = json.load(f)
         wandb_args["tags"] = [opt['hash']]
-        wandb_args["name"] = opt['experiment']
+        wandb_args["name"] = '_'.join([opt['dataset_name'], opt['sensitive_name'], opt['target_attribute'], opt['experiment'], opt['experiment_name']])
+        print('Experiment is logged as }', wandb_args["name"])
         wandb.init(**wandb_args, config = opt)
     else:
         wandb = None

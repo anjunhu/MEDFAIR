@@ -22,12 +22,13 @@ if __name__ == '__main__':
     opt, wandb = parse_args.collect_args()
     if not opt['test_mode']:
         
-        random_seeds = np.random.choice(range(100), size = 3, replace=False).tolist()
+        #random_seeds = np.random.choice(range(100), size = 3, replace=False).tolist()
         val_df = pd.DataFrame()
         test_df = pd.DataFrame()
+        random_seeds = [int(opt['random_seed'])]
         print('Random seed: ', random_seeds)
         for random_seed in random_seeds:
-            opt['random_seed'] = random_seed
+            #opt['random_seed'] = random_seed
             model = basics.get_model(opt, wandb)
             pred_df = train(model, opt)
             val_df = pd.concat([val_df, pred_df])

@@ -71,16 +71,18 @@ class BaseDataset(torch.utils.data.Dataset):
         elif self.sens_name == 'Insurance':
             self.A = np.asarray(self.dataframe['Insurance_binary'].values != 0).astype('float')
         else:
-            raise ValueError("Does not contain {}".format(self.sens_name))
+            A = np.random.randint(0, self.sens_classes, (len(self.dataframe)))
+            #A = np.asarray(self.dataframe[sens_name].values != 0).astype('float')
+            #raise ValueError("Does not contain {}".format(self.sens_name))
         return A
 
-    def get_weights(self, resample_which):
-        sens_attr, group_num = self.group_counts(resample_which)
+    def get_weights(self, resample_which, flag=None):
+        sens_attr, group_num = self.group_counts(resample_which, flag)
         group_weights = [1/x.item() for x in group_num]
         sample_weights = [group_weights[int(i)] for i in sens_attr]
         return sample_weights
     
-    def group_counts(self, resample_which = 'group'):
+    def group_counts(self, resample_which = 'group', flag=None):
         if resample_which == 'group' or resample_which == 'balanced':
             if self.sens_name == 'Sex':
                 mapping = {'M': 0, 'F': 1}
@@ -113,7 +115,9 @@ class BaseDataset(torch.utils.data.Dataset):
                     groups = self.dataframe['Insurance'].values
                 group_array = groups.tolist()
             else:
-                raise ValueError("sensitive attribute does not defined in BaseDataset")
+                groups = np.random.randint(0, self.sens_classes, (len(self.dataframe)))
+                group_array = groups.tolist()
+                #raise ValueError("sensitive attribute does not defined in BaseDataset")
             
             if resample_which == 'balanced':
                 #get class
@@ -134,6 +138,14 @@ class BaseDataset(torch.utils.data.Dataset):
             self._group_counts = (torch.arange(num_labels * num_groups).unsqueeze(1)==self._group_array).sum(1).float()
         elif resample_which == 'class':
             self._group_counts = (torch.arange(num_labels).unsqueeze(1)==self._group_array).sum(1).float()
+        if flag == 'MoreFemales':
+            self._group_counts[-1] /= 10
+            self._group_counts[-2] /= 10
+        if flag == 'Younger':
+            self._group_counts[-1] *= 10
+            self._group_counts[-2] *= 10
+            self._group_counts[-3] *= 10
+            self._group_counts[-4] *= 10
         return group_array, self._group_counts
     
     def __len__(self):

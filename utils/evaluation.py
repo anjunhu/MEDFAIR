@@ -48,9 +48,12 @@ def find_threshold(tol_output, tol_target):
 
 
 def calculate_auc(prediction, labels):
-    fpr, tpr, thresholds = sklm.roc_curve(labels, prediction, pos_label=1)
-    auc = sklm.auc(fpr, tpr)
-    return auc
+    if len(np.unique(labels)) > 1:
+        fpr, tpr, thresholds = sklm.roc_curve(labels, prediction, pos_label=1)
+        auc = sklm.auc(fpr, tpr)
+        return auc
+    else:
+        return 0.
 
 
 def calculate_FPR_FNR(pred_df, test_meta, opt):
@@ -90,9 +93,10 @@ def calculate_FPR_FNR(pred_df, test_meta, opt):
     
     test_meta['index'] = test_meta.index
     pred_df = pred_df.merge(test_meta, left_on="index", right_on="index", suffixes=('', '_y'))
-    sub_columns = ['index', 'pred', 'label'] + [sens_attr_name]
+    sub_columns = ['index', 'pred', 'label', 'sensitive']
     pred_df = pred_df[sub_columns]
-    
+    pred_df.rename({'sensitive':sens_attr_name}, axis='columns', inplace=True)
+    print(pred_df)
     FPR_y = []   
     FNR_y = []
     
@@ -452,6 +456,7 @@ def calculate_metrics(tol_output, tol_target, tol_sensitive, tol_index, sens_cla
     pred_df['index'] = tol_index
     pred_df['pred'] = tol_predicted
     pred_df['label'] = np.asarray(tol_target).squeeze()
+    pred_df['sensitive'] = tol_sensitive
     
     acc = 100 * correct / len(tol_target)
     auc = calculate_auc(tol_output, tol_target)

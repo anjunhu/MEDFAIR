@@ -7,23 +7,25 @@ from datasets.BaseDataset import BaseDataset
 
 
 class MIMIC_CXR(BaseDataset):
-    def __init__(self, dataframe, PATH_TO_IMAGES, sens_name, sens_classes, transform):
-        super(MIMIC_CXR, self).__init__(dataframe, PATH_TO_IMAGES, sens_name, sens_classes, transform)
-        
-        with open(PATH_TO_IMAGES, 'rb') as f: 
-            self.tol_images = pickle.load(f)
-            
-        self.A = self.set_A(sens_name) 
-        self.Y = (np.asarray(self.dataframe['No Finding'].values) > 0).astype('float')
-        self.AY_proportion = None
+    def __init__(self, dataframe, path_to_pickles, sens_name, sens_classes, transform):
+        super(MIMIC_CXR, self).__init__(dataframe, path_to_pickles, sens_name, sens_classes, transform)
+
+        with open(path_to_pickles, 'rb') as f:
+            self.dataframe = pickle.load(f)
+        self.transform = transform
+        print(self.dataframe )
+        self.A = self.set_A('binaryLabel') #(sens_name)
+        self.Y = self.dataframe['binaryLabel']
+        self.AY_proportion = self.get_AY_proportions()
 
     def __getitem__(self, idx):
-        item = self.dataframe.iloc[idx]
-        img = Image.fromarray(self.tol_images[idx]).convert('RGB')
+        item = self.dataframe.iloc[idx % len(self)]
+
+        img = Image.fromarray(item['image']).convert('RGB')
         img = self.transform(img)
 
-        label = torch.FloatTensor([int(item['No Finding'].astype('float') > 0)])
+        label = torch.Tensor([item['binaryLabel']]).float()
+        #print(label, item['binaryLabel'])
+        sensitive = torch.Tensor([0.]).float() #self.get_sensitive(self.sens_name, self.sens_classes, item)
 
-        sensitive = self.get_sensitive(self.sens_name, self.sens_classes, item)
-                
         return img, label, sensitive, idx

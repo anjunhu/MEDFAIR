@@ -9,8 +9,10 @@ class cusResNet18(nn.Module):
     def __init__(self, n_classes, pretrained = True):
         super(cusResNet18, self).__init__()
         resnet = torchvision.models.resnet18(pretrained=pretrained)
-        
-        resnet.fc = nn.Linear(resnet.fc.in_features, n_classes)
+        self.bottleneck_dim = 256
+
+        resnet.fc = nn.Linear(resnet.fc.in_features, self.bottleneck_dim)
+        self.fc = nn.Linear(self.bottleneck_dim, n_classes)
         self.avgpool = resnet.avgpool
         
         self.returnkey_avg = 'avgpool'
@@ -20,11 +22,11 @@ class cusResNet18(nn.Module):
 
     def forward(self, x):
         outputs = self.body(x)
-        return outputs[self.returnkey_fc], outputs[self.returnkey_avg].squeeze()
+        return self.fc(outputs[self.returnkey_fc]), outputs[self.returnkey_avg].squeeze()
 
     def inference(self, x):
         outputs = self.body(x)
-        return outputs[self.returnkey_fc], outputs[self.returnkey_avg].squeeze()
+        return self.fc(outputs[self.returnkey_fc]), outputs[self.returnkey_avg].squeeze()
     
     
 class cusResNet50(cusResNet18):    
