@@ -76,13 +76,13 @@ class BaseDataset(torch.utils.data.Dataset):
             #raise ValueError("Does not contain {}".format(self.sens_name))
         return A
 
-    def get_weights(self, resample_which, flag=None):
+    def get_weights(self, resample_which, flag=''):
         sens_attr, group_num = self.group_counts(resample_which, flag)
         group_weights = [1/x.item() for x in group_num]
         sample_weights = [group_weights[int(i)] for i in sens_attr]
         return sample_weights
     
-    def group_counts(self, resample_which = 'group', flag=None):
+    def group_counts(self, resample_which = 'group', flag=''):
         if resample_which == 'group' or resample_which == 'balanced':
             if self.sens_name == 'Sex':
                 mapping = {'M': 0, 'F': 1}
@@ -118,13 +118,11 @@ class BaseDataset(torch.utils.data.Dataset):
                 groups = np.random.randint(0, self.sens_classes, (len(self.dataframe)))
                 group_array = groups.tolist()
                 #raise ValueError("sensitive attribute does not defined in BaseDataset")
-            
+
             if resample_which == 'balanced':
-                #get class
                 labels = self.Y.tolist()
                 num_labels = len(set(labels))
                 num_groups = len(set(group_array))
-                
                 group_array = (np.asarray(group_array) * num_labels + np.asarray(labels)).tolist()
                 
         elif resample_which == 'class':
@@ -138,14 +136,19 @@ class BaseDataset(torch.utils.data.Dataset):
             self._group_counts = (torch.arange(num_labels * num_groups).unsqueeze(1)==self._group_array).sum(1).float()
         elif resample_which == 'class':
             self._group_counts = (torch.arange(num_labels).unsqueeze(1)==self._group_array).sum(1).float()
-        if flag == 'MoreFemales':
+        if self.sens_name == 'Sex' and 'MoreFemales' in flag:
             self._group_counts[-1] /= 10
             self._group_counts[-2] /= 10
-        if flag == 'Younger':
+        if self.sens_name == 'Age' and 'Younger' in flag:
             self._group_counts[-1] *= 10
             self._group_counts[-2] *= 10
             self._group_counts[-3] *= 10
             self._group_counts[-4] *= 10
+        if self.sens_name == 'Age' and 'Older' in flag:
+            self._group_counts[-1] /= 10
+            self._group_counts[-2] /= 10
+            self._group_counts[-3] /= 10
+            self._group_counts[-4] /= 10
         return group_array, self._group_counts
     
     def __len__(self):

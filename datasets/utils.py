@@ -105,8 +105,9 @@ def get_dataset(opt):
     else:
         dataset_name = getattr(datasets, opt['dataset_name'])
         pickle_train_path = data_setting['pickle_train_path'] +'/'+opt['dataset_name']+'/'+ 'train_'+opt['target_attribute']+'.pkl'
+        #pickle_val_path = data_setting['pickle_val_path'] +'/'+'MIMIC_CXR'+'/'+ 'valid_'+opt['target_attribute']+'.pkl'
         pickle_val_path = data_setting['pickle_val_path'] +'/'+opt['dataset_name']+'/'+ 'valid_'+opt['target_attribute']+'.pkl'
-        pickle_test_path = data_setting['pickle_test_path'] +'/'+opt['dataset_name']+'/'+ 'valid_'+opt['target_attribute']+'.pkl'
+        pickle_test_path = pickle_val_path #data_setting['pickle_test_path'] +'/'+opt['dataset_name']+'/'+ 'valid_'+opt['target_attribute']+'.pkl'
         print(f'Training with pickled data at {pickle_train_path}; Validating with {pickle_val_path}')
         train_data = dataset_name(train_meta, pickle_train_path, opt['sensitive_name'], opt['train_sens_classes'], transform_train)
         val_data = dataset_name(val_meta, pickle_val_path, opt['sensitive_name'], opt['sens_classes'], transform_test)
@@ -114,11 +115,15 @@ def get_dataset(opt):
 
     print('loaded dataset ', opt['dataset_name'])
 
+    sampler = None
+    val_sampler = None
     if opt['experiment']=='resampling' or opt['experiment']=='GroupDRO' or opt['experiment']=='resamplingSWAD':
-        weights = train_data.get_weights(resample_which = opt['resample_which'], flag=opt['experiment_name'])
-        sampler = WeightedRandomSampler(weights, len(weights), replacement=True, generator=g)
-    else:
-        sampler = None
+        if opt['resample_which'] != 'natural':
+            weights = train_data.get_weights(resample_which = opt['resample_which'], flag=opt['experiment_name'])
+            sampler = WeightedRandomSampler(weights, len(weights), replacement=True, generator=g)
+        if opt['val_resample_which'] != 'natural':
+            val_weights = val_data.get_weights(resample_which = opt['val_resample_which'])
+            val_sampler = WeightedRandomSampler(val_weights, len(val_weights), replacement=True, generator=g)
 
     train_loader = torch.utils.data.DataLoader(
                             train_data, batch_size=opt['batch_size'],
@@ -126,11 +131,10 @@ def get_dataset(opt):
                             shuffle=(opt['experiment']!='resampling' and opt['experiment']!='GroupDRO' and opt['experiment']!='resamplingSWAD'), num_workers=8, 
                             worker_init_fn=seed_worker, generator=g, pin_memory=True)
 
-    val_weights = val_data.get_weights(resample_which = 'balanced')
     val_loader = torch.utils.data.DataLoader(
                           val_data, batch_size=opt['batch_size'],
                           shuffle=False,
-                          sampler=WeightedRandomSampler(val_weights, len(val_weights), replacement=True, generator=g),
+                          sampler=val_sampler,
                           num_workers=8, worker_init_fn=seed_worker, generator=g, pin_memory=True)
 
     test_loader = torch.utils.data.DataLoader(

@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pprint import pprint
 from torch.utils.data.dataloader import default_collate
+from importlib import import_module
 
 from PIL import Image, ImageFilter
 
@@ -168,46 +169,6 @@ class PseudoLabelsWrapper(torch.utils.data.Dataset):
         return imtensor, label, sensitive, idx, strong_augmented, strong_augmented2
 
 
-class Resnet(nn.Module):
-    def __init__(self, opt):
-        super(Resnet, self).__init__()
-        self.bottleneck_dim = 256
-
-        if opt['backbone'] == 'cusResNet18':
-            self.model = resnet18(pretrained=opt['pretrained']).to(opt['device'])
-        elif opt['backbone'] == 'cusResNet101':
-            self.model = resnet101(pretrained=opt['pretrained']).to(opt['device'])
-        elif opt['backbone'] == 'cusResNet50':
-            self.model = resnet50(pretrained=opt['pretrained']).to(opt['device'])
-
-        self.model.fc = nn.Linear(self.model.fc.in_features, self.bottleneck_dim)
-        bn = nn.BatchNorm1d(self.bottleneck_dim)
-        self.encoder = nn.Sequential(self.model, bn).to(opt['device'])
-
-        self.fc = nn.Linear(self.bottleneck_dim, opt['num_classes']).to(opt['device'])
-        self.fc = nn.utils.weight_norm(self.fc, dim=0)
-
-        ### Hacky ###
-        state_dict = torch.load('/home/scat9241/repos/MEDFAIR/your_path/fariness_data/model_records/CXP/Sex/cusResNet18/resampling/SRC_Cardiomegaly_best.pth')
-        #state_dict = torch.load('/home/scat9241/repos/MEDFAIR/your_path/fariness_data/model_records/CXP/Sex/cusResNet18/resampling/SRC_Edema_2dim.pth')
-        sd = {}
-        for key in state_dict['model']:
-            sd[key.replace('body.', '')] = state_dict['model'][key]
-        self.model.load_state_dict(sd, strict=False)
-        #sd = {}
-        #for key in state_dict['model']:
-        #    if "body" not in key: sd[key.replace("fc.", '')] = state_dict['model'][key]
-        #self.fc.load_state_dict(sd, strict=False)
-
-    def forward(self, x):
-        features = self.encoder(x)
-        features = torch.flatten(features, 1)
-
-        logits = self.fc(features)
-
-        return features, logits
-
-
 class AdaMoCo(nn.Module):
     def __init__(self, src_model, momentum_model, features_length, num_classes, dataset_length, temporal_length, device):
         super(AdaMoCo, self).__init__()
@@ -282,10 +243,10 @@ class AdaMoCo(nn.Module):
 
     def forward(self, im_q, im_k=None, cls_only=False):
         # compute query features
-        feats_q, logits_q = self.src_model(im_q)
+        logits_q, feats_q = self.src_model(im_q)
 
         if cls_only:
-            return feats_q, logits_q
+            return logits_q, feats_q
 
         q = F.normalize(feats_q, dim=1)
 
@@ -293,7 +254,7 @@ class AdaMoCo(nn.Module):
         with torch.no_grad():  # no gradient to keys
             self._momentum_update_key_encoder()  # update the key encoder
 
-            k, _ = self.momentum_model(im_k)
+            _, k = self.momentum_model(im_k)
             k = F.normalize(k, dim=1)
 
         # compute logits
@@ -310,12 +271,13 @@ class AdaMoCo(nn.Module):
         logits_ins /= self.T_moco
 
         # dequeue and enqueue will happen outside
-        return feats_q, logits_q, logits_ins, k
+        return logits_q, feats_q, logits_ins, k
 
 
 class PseudoLabels(resampling):
     def __init__(self, opt, wandb):
         super(PseudoLabels, self).__init__(opt, wandb)
+        wandb.run.log_code(".")
         self.set_data(opt)
         self.set_network(opt)
         self.set_optimizer(opt)
@@ -352,24 +314,42 @@ class PseudoLabels(resampling):
                            shuffle=True, num_workers=8, worker_init_fn=seed_worker, generator=g, pin_memory=True)
 
     def set_network(self, opt):
-        self.net = Resnet(opt)
-        self.momentum_net = Resnet(opt)
-        self.moco_model = AdaMoCo(src_model = self.net, momentum_model = self.momentum_net,
-                                  features_length=self.net.bottleneck_dim, num_classes=opt['num_classes'],
+        if self.is_3d:
+            mod = import_module("models.basemodels_3d")
+            cusModel = getattr(mod, self.backbone)
+            self.network = cusModel(n_classes=self.output_dim, pretrained = self.pretrained).to(self.device)
+            self.momentum_net = cusModel(n_classes=self.output_dim, pretrained = self.pretrained).to(self.device)
+        elif self.is_tabular:
+            mod = import_module("models.basemodels_mlp")
+            cusModel = getattr(mod, self.backbone)
+            self.network = cusModel(n_classes=self.output_dim, in_features= self.in_features, hidden_features = 1024).to(self.device)
+            self.momentum_net = cusModel(n_classes=self.output_dim, pretrained=self.pretrained).to(self.device)
+        else:
+            mod = import_module("models.basemodels")
+            cusModel = getattr(mod, self.backbone)
+            self.network = cusModel(n_classes=self.output_dim, pretrained=self.pretrained).to(self.device)
+            self.momentum_net = cusModel(n_classes=self.output_dim, pretrained=self.pretrained).to(self.device)
+        state_dict = torch.load(opt['source_model'])
+        self.network.load_state_dict(state_dict['model'])
+        self.momentum_net.load_state_dict(state_dict['model'])
+        self.moco_model = AdaMoCo(src_model = self.network, momentum_model = self.momentum_net,
+                                  features_length=self.network.bottleneck_dim*2, num_classes=opt['num_classes'],
                                   dataset_length=len(self.train_data), temporal_length=5, device=opt['device'])
         self.device = opt['device']
 
     def set_optimizer(self, opt):
         optimizer_setting = opt['optimizer_setting']
         self.optimizer = optimizer_setting['optimizer'](
-            params=self.net.parameters(),
+            params=self.network.parameters(),
             lr=optimizer_setting['lr'],
             weight_decay=optimizer_setting['weight_decay']
         )
 
     def state_dict(self):
         state_dict = {
-            'model': self.moco_model.state_dict(),
+            'moco_model': self.moco_model.state_dict(),
+            'network': self.network.state_dict(),
+            'momentum_net': self.momentum_net.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'epoch': self.epoch
         }
@@ -378,7 +358,7 @@ class PseudoLabels(resampling):
     def _train(self, loader):
         """Train the model for one epoch"""
 
-        self.net.train()
+        self.network.train()
         self.moco_model.train()
 
         train_loss = 0
@@ -387,18 +367,17 @@ class PseudoLabels(resampling):
 
         tol_output, tol_target, tol_sensitive, tol_index, tol_uncertainty = [], [], [], [], []
         train_loss, no_iter = 0., 0.
-        metrics = {'Training AUC': 0.,'Training ACC': 0.,'Training UNC': 0.,}
-        for i in range(self.opt['sens_classes']):
-            metrics[f'Training AUC A{i}'] = 0.0
-            metrics[f'Training ACC A{i}'] = 0.0
-            metrics[f'Training UNC A{i}'] = 0.0
+        metrics = {} #{'Training AUC': 0.,'Training ACC': 0.,'Training Loss': 0.,}
+        for sa in range(self.opt['sens_classes']):
+            #metrics[f'Training AUC A{sa}'] = 0.0
+            #metrics[f'Training ACC A{sa}'] = 0.0
+            metrics[f'Training Loss Cls A{sa}'] = 0.0
 
         for i, (images, targets, sensitive_attr, index, strong_augmented, strong_augmented2) in enumerate(loader):
 
             if i == 0:
-                for sa in torch.unique(sensitive_attr):
-                    sa = int(sa)
-                    print(f'A{i} Total/Y0/Y1:', images[sensitive_attr==sa].shape, images[torch.logical_and((sensitive_attr==sa),(targets.squeeze()==0))].shape,
+                for sa in range(self.opt['sens_classes']): #torch.unique(sensitive_attr):
+                    print(f'Train A{sa} Total/Y0/Y1:', images[sensitive_attr==sa].shape, images[torch.logical_and((sensitive_attr==sa),(targets.squeeze()==0))].shape,
                                                                               images[torch.logical_and((sensitive_attr==sa),(targets.squeeze()==1))].shape)
 
             weak_x, y, sensitive_attr, idxs = images.to(self.device), targets.to(self.device), sensitive_attr.to(self.device), index.to(self.device)
@@ -406,9 +385,9 @@ class PseudoLabels(resampling):
 
             self.optimizer.zero_grad()
 
-            feats_w, logits_w = self.moco_model(weak_x, cls_only=True)
+            logits_w, feats_w = self.moco_model(weak_x, cls_only=True)
             #print(logits_w.shape)
-            if True: #args.label_refinement:
+            if self.opt['label_refinement']:
                 with torch.no_grad():
                     if logits_w.shape[-1] > 1:
                         probs_w = F.softmax(logits_w, dim=1)
@@ -422,15 +401,12 @@ class PseudoLabels(resampling):
                     probs_w = F.sigmoid(logits_w)
                 pseudo_labels_w = probs_w.max(1)[1]
 
-            _, logits_q, logits_ctr, keys = self.moco_model(strong_x, strong_x2)
-            if True: # args.ctr:
-                loss_ctr = contrastive_loss(
+            logits_q, _, logits_ctr, keys = self.moco_model(strong_x, strong_x2)
+            loss_ctr = contrastive_loss(
                     logits_ins=logits_ctr,
                     pseudo_labels=self.moco_model.mem_labels[idxs],
                     mem_labels=self.moco_model.mem_labels[self.moco_model.idxs]
                 )
-            else:
-                loss_ctr = 0
 
             # update key features and corresponding pseudo labels
             self.moco_model.update_memory(self.epoch, idxs, keys.to(self.device), pseudo_labels_w.to(self.device), y.squeeze())
@@ -443,23 +419,28 @@ class PseudoLabels(resampling):
                 w = torch.exp(-w)
 
             #Standard positive learning
-            if False: # args.neg_l:
+            if self.opt['negative_learning']:
                 #Standard negative learning
                 loss_cls = ( nl_criterion(logits_q, pseudo_labels_w, self.opt['num_classes'])).mean()
-                if True: # args.reweighting:
+                if self.opt['uncertainty_reweighting']:
                     loss_cls = (w * nl_criterion(logits_q, pseudo_labels_w)).mean()
             else:
                 #print(logits_q, pseudo_labels_w)
-                if True: #args.reweighting:
-                    #loss_cls = (w * CE(logits_q.squeeze(), pseudo_labels_w.long())).mean()
+                if self.opt['uncertainty_reweighting']:
+                    #loss_cls = (w * CE(logits_q.squeeze(), pseudo_labels_w.long()))
                     if logits_w.shape[-1] > 1:
-                        loss_cls = (w * BCE(logits_q[:, 1], pseudo_labels_w.float())).mean()
+                        loss_cls = (w * BCE(logits_q[:, 1], pseudo_labels_w.float()))
                     else:
-                        loss_cls = (w * BCE(logits_q.squeeze(), pseudo_labels_w.squeeze().float())).mean()
+                        loss_cls = (w * BCE(logits_q.squeeze(), pseudo_labels_w.squeeze().float()))
+
+            for sa in range(self.opt['sens_classes']): #torch.unique(sensitive_attr):
+                #metrics[f'Training AUC A{sa}'] += 0.0
+                #metrics[f'Training ACC A{sa}'] += 0.0
+                metrics[f'Training Loss Cls A{sa}'] += loss_cls[sensitive_attr==sa].mean()
 
             loss_div = div(logits_w) + div(logits_q)
 
-            loss = loss_cls #+ loss_ctr + loss_div
+            loss = loss_cls.mean() + self.opt['loss_ctr_weight']*loss_ctr + self.opt['loss_div_weight']*loss_div
 
             update_labels(self.banks, idxs, feats_w, logits_w)
 
@@ -475,23 +456,26 @@ class PseudoLabels(resampling):
             if self.log_freq and (i % self.log_freq == 0):
                 self.wandb.log({'Training loss': train_loss / (i+1), 'Training AUC': auc / (i+1),
                                 'Training loss_cls': loss_cls, 'Training loss_ctr': loss_ctr, 'Training loss_dic': loss_div,})
-        
+                for sa in range(self.opt['sens_classes']):
+                    self.wandb.log({f'Training Loss Cls A{sa}': metrics[f'Training Loss Cls A{sa}'] / (i+1)})
         auc = 100 * auc / no_iter
         train_loss /= no_iter
-        
-        print('Training epoch {}: AUC:{}'.format(self.epoch, auc))
-        print('Training epoch {}: loss:{}'.format(self.epoch, train_loss))
-        
+        for sa in range(self.opt['sens_classes']):
+            loss_sa = metrics[f'Training Loss Cls A{sa}'] / no_iter
+            print('Training epoch {}: Loss Cls A{}: {}'.format(self.epoch, sa, loss_sa))
+        print('Training epoch {}: AUC: {}'.format(self.epoch, auc))
+        print('Training epoch {}: Loss: {}'.format(self.epoch, train_loss))
+
         self.epoch += 1
 
     @torch.no_grad()
     def _val(self, loader):
         print("Evaluating Dataset + Updating PseudoLabels!")
 
-        self.net.eval()
+        self.network.eval()
         self.moco_model.eval()
 
-        tol_probs, tol_index, tol_target = [], [], []
+        tol_logits, tol_probs, tol_index, tol_target = [], [], [], []
         tol_sensitive, features = [], []
 
 
@@ -499,17 +483,18 @@ class PseudoLabels(resampling):
             images, targets, sensitive_attr = images.to(self.device), targets.to(self.device), sensitive_attr.to(self.device)
 
             if i == 0:
-                print('\nY0/Y1', targets[targets==0].shape, targets[targets==1].shape)
-                for sa in torch.unique(sensitive_attr):
+                print('\nVal Y0/Y1', targets[targets==0].shape, targets[targets==1].shape)
+                for sa in range(self.opt['sens_classes']): #torch.unique(sensitive_attr):
                     sa = int(sa)
-                    print(f'A{i} Total/Y0/Y1:', images[sensitive_attr==sa].shape, images[torch.logical_and((sensitive_attr==sa),(targets.squeeze()==0))].shape,
+                    print(f'A{sa} Total/Y0/Y1:', images[sensitive_attr==sa].shape, images[torch.logical_and((sensitive_attr==sa),(targets.squeeze()==0))].shape,
                                                                               images[torch.logical_and((sensitive_attr==sa),(targets.squeeze()==1))].shape)
 
-            feats, logits_cls = self.moco_model(images, cls_only=True)
+            logits_cls, feats = self.moco_model(images, cls_only=True)
             if logits_cls.shape[-1] > 1:
                 probs = F.softmax(logits_cls, dim=1)
             else:
                 probs = F.sigmoid(logits_cls)
+            tol_logits.append(logits_cls)
             features.append(feats)
             tol_target.append(targets)
             tol_probs.append(probs)
@@ -518,6 +503,7 @@ class PseudoLabels(resampling):
 
         features = torch.cat(features)
         tol_target = torch.cat(tol_target)
+        tol_logits = torch.cat(tol_logits)
         tol_probs = torch.cat(tol_probs)
         tol_index = torch.cat(tol_index)
         tol_sensitive = torch.cat(tol_sensitive)
@@ -530,22 +516,21 @@ class PseudoLabels(resampling):
         }
 
         # refine predicted labels
-        pred_labels, _, _, _ = refine_predictions(features, probs, self.banks)
+        #pred_labels, _, _, _ = refine_predictions(features, tol_probs, self.banks)
+        pred_labels = torch.argmax(tol_probs, 1)
 
-        #acc = 100.*accuracy_score(tol_target.to('cpu'), pred_labels.to('cpu'))
-        #auc = calculate_auc(probs[:, 1].cpu().data.numpy(), tol_target.cpu().data.numpy())
-        #print("\n| Validation Epoch #%d\t Accuracy: %.2f%%\n" %(self.epoch,acc))
-        #log_dict = {'Loss': val_loss, 'AUC': auc, 'ACC': acc,}
-        #log_dict = basics.add_dict_prefix(log_dict, 'Validation ')
-        #return val_loss, acc, log_dict, None
         if tol_probs.shape[-1] > 1: tol_probs = tol_probs[:, 1]
 
-        print(tol_target.shape, tol_index.shape, tol_sensitive.shape, tol_probs.shape)
+        #print(tol_target.shape, tol_index.shape, tol_sensitive.shape, tol_probs.shape)
         log_dict, t_predictions, pred_df = calculate_metrics(tol_probs.squeeze().detach().cpu().data.numpy(),
                          tol_target.squeeze().detach().cpu().data.numpy(), tol_sensitive.detach().cpu().data.numpy(),
                          tol_index.detach().cpu().data.numpy(), self.opt['sens_classes'])
-        self.wandb.log(log_dict)
         pred_df['sensitive'] = tol_sensitive.detach().cpu().data.numpy()
+        log_dict['Pseudo-Real Agreement'] = accuracy_score(tol_target.squeeze().detach().cpu().data.numpy(), pred_labels.squeeze().detach().cpu().data.numpy())
+        #log_dict['Prob-Pseudo Agreement'] = accuracy_score(torch.argmax(tol_probs, 1).squeeze().detach().cpu().data.numpy(), pred_labels.squeeze().detach().cpu().data.numpy())
+        log_dict['Pred-Pseudo Agreement'] = accuracy_score(torch.round(tol_probs).squeeze().detach().cpu().data.numpy(), pred_labels.squeeze().detach().cpu().data.numpy())
+        log_dict['Pred-Real Agreement'] = accuracy_score(torch.round(tol_probs).squeeze().detach().cpu().data.numpy(), tol_target.squeeze().detach().cpu().data.numpy())
+        self.wandb.log(log_dict)
         pprint(log_dict)
         return log_dict['Overall AUC'], log_dict['Overall AUC'], log_dict, pred_df
 

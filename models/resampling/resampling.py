@@ -6,4 +6,3 @@ class resampling(baseline):
         super(resampling, self).__init__(opt, wandb)
         self.set_network(opt)
         self.set_optimizer(opt)
-    

@@ -448,8 +448,8 @@ def get_worst_auc(log_dict):
 def calculate_metrics(tol_output, tol_target, tol_sensitive, tol_index, sens_classes):
 
     correct = 0
-    theshold = find_threshold(tol_output, tol_target)
-    tol_predicted = (tol_output > theshold).astype('float')
+    threshold = find_threshold(tol_output, tol_target)
+    tol_predicted = (tol_output > threshold).astype('float')
     correct += (tol_predicted == tol_target).sum()
     
     pred_df = pd.DataFrame(columns=['index', 'pred', 'label'])
@@ -520,5 +520,6 @@ def calculate_metrics(tol_output, tol_target, tol_sensitive, tol_index, sens_cla
         log_dict['ECE-group_' + str(i)] = ece
         log_dict['BCE-group_' + str(i)] = bce
 
+    log_dict["Threshold"] = threshold
     log_dict = get_worst_auc(log_dict)
     return log_dict, tol_predicted, pred_df

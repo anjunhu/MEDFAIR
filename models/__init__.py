@@ -16,5 +16,6 @@ import models.GSAM
 import models.SAMSWAD
 
 import models.PseudoLabels
+import models.TENT
 
 import models.utils

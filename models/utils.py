@@ -19,8 +19,8 @@ def standard_train(opt, network, optimizer, loader, _criterion, wandb):
     for iter, (images, targets, sensitive_attr, index) in enumerate(loader):
         images, targets, sensitive_attr = images.to(opt['device']), targets.to(opt['device']), sensitive_attr.to(opt['device'])
         optimizer.zero_grad()
-        outputs, _ = network(images)
-        #print(outputs.shape, targets.shape)
+        outputs, features = network(images)
+        #print(outputs.shape, features.shape)
         if outputs.shape[-1] > 1:
             loss = F.cross_entropy(F.softmax(outputs), targets.long().squeeze())
             uncertainty = F.softmax(outputs).max(1)[0]
@@ -124,7 +124,7 @@ def standard_val(opt, network, loader, _criterion, sens_classes, wandb):
             tol_uncertainty.extend(uncertainty.squeeze().detach().cpu().numpy().tolist())
 
             if iter == 0:
-                print('\nVslidation Y0/Y1', outputs[:, 1][targets.squeeze()==0].shape, outputs[:, 1][targets.squeeze()==1].shape)
+                print('\nValidation Y0/Y1', outputs[:, 1][targets.squeeze()==0].shape, outputs[:, 1][targets.squeeze()==1].shape)
                 for i in range(opt['sens_classes']):
                     print(f'A{i} Total/Y0/Y1:', outputs[sensitive_attr.squeeze()==i].shape, outputs[torch.logical_and((sensitive_attr.squeeze()==i),(targets.squeeze()==0))].shape,
                                                                               outputs[torch.logical_and((sensitive_attr.squeeze()==i),(targets.squeeze()==1))].shape)

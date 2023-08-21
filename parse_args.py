@@ -35,6 +35,7 @@ def collect_args():
                             'BayesCNN',
                             'resamplingSWAD',
                             'PseudoLabels',
+                            'TENT',
                         ])
 
     parser.add_argument('--experiment_name', type=str, default='test')
@@ -87,8 +88,9 @@ def collect_args():
     parser.add_argument('--input_channel', type=int, default=3, help='input channel of the images')
     
     # resampling
-    parser.add_argument('--resample_which', type=str, default='group', choices=['class', 'balanced'], help='audit step for LAFTR')
-    
+    parser.add_argument('--resample_which', type=str, default='group', choices=['natural', 'class', 'group', 'balanced'], help='')
+    parser.add_argument('--val_resample_which', type=str, default='group', choices=['natural', 'class', 'group', 'balanced'], help='')
+
     # LAFTR
     parser.add_argument('--aud_steps', type=int, default=1, help='audit step for LAFTR')
     parser.add_argument('--class_coeff', type=float, default=1.0, help='coefficient for classification loss of LAFTR')
@@ -133,6 +135,16 @@ def collect_args():
     # BayesCNN
     parser.add_argument("--num_monte_carlo", type=int, default=10, help="Rho parameter for SAM.")
     
+    # Domain Adaptation
+    parser.add_argument("--source_model", type=str, default=None, help="Source Model for SFUDA methods.")
+
+    # PseudoLabels
+    parser.add_argument("--negative_learning", type=bool, default=False, help="")
+    parser.add_argument("--uncertainty_reweighting", type=bool, default=True, help="")
+    parser.add_argument("--label_refinement", type=bool, default=False, help="")
+    parser.add_argument("--loss_ctr_weight", type=float, default=0.0, help="contrastive term weight")
+    parser.add_argument("--loss_div_weight", type=float, default=0.0, help="regularisation term weight")
+
     parser.set_defaults(cuda=True)
     
     # logging 
@@ -152,7 +164,8 @@ def create_exerpiment_setting(opt):
     opt['hash'] = run_hash.hexdigest()[:10]
     print('run hash (first 10 digits): ', opt['hash'])
     
-    opt['save_folder'] = os.path.join('your_path/fariness_data/model_records', opt['dataset_name'], opt['sensitive_name'], opt['backbone'], opt['experiment'])
+    opt['save_folder'] = os.path.join('your_path/fariness_data/model_records', opt['dataset_name'], opt['sensitive_name'], opt['target_attribute'], opt['experiment'], opt['experiment_name'], opt['backbone'])
+
     opt['resume_path'] = opt['save_folder']
     basics.creat_folder(opt['save_folder'])
     
@@ -201,7 +214,8 @@ def create_exerpiment_setting(opt):
         with open('configs/wandb_init.json') as f:
             wandb_args = json.load(f)
         wandb_args["tags"] = [opt['hash']]
-        wandb_args["name"] = '_'.join([opt['dataset_name'], opt['sensitive_name'], opt['target_attribute'], opt['experiment'], opt['experiment_name']])
+        wandb_args["name"] = '_'.join([opt['dataset_name'], opt['sensitive_name'], opt['target_attribute'], opt['experiment'],
+                                       'T', opt['resample_which'], 'V', opt['val_resample_which'], opt['experiment_name']])
         print('Experiment is logged as }', wandb_args["name"])
         wandb.init(**wandb_args, config = opt)
     else:
