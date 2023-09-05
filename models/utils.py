@@ -22,7 +22,8 @@ def standard_train(opt, network, optimizer, loader, _criterion, wandb):
         outputs, features = network(images)
         #print(outputs.shape, features.shape)
         if outputs.shape[-1] > 1:
-            loss = F.cross_entropy(F.softmax(outputs), targets.long().squeeze())
+            loss = F.binary_cross_entropy_with_logits(outputs[:, 1], targets.squeeze().float())
+            #loss = F.cross_entropy(F.softmax(outputs), targets.long().squeeze())
             uncertainty = F.softmax(outputs).max(1)[0]
         else:
             loss = F.binary_cross_entropy_with_logits(outputs, targets)
@@ -103,7 +104,8 @@ def standard_val(opt, network, loader, _criterion, sens_classes, wandb):
             
 
             if outputs.shape[-1] > 1:
-                loss = F.cross_entropy(F.softmax(outputs), targets.long().squeeze())
+                loss = F.binary_cross_entropy_with_logits(outputs[:, 1], targets.squeeze().float())
+                #loss = F.cross_entropy(F.softmax(outputs), targets.long().squeeze())
                 uncertainty = F.softmax(outputs).max(1)[0]
             else:
                 loss = F.binary_cross_entropy_with_logits(outputs, targets)

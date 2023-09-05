@@ -33,7 +33,9 @@ class cusResNet50(cusResNet18):
     def __init__(self, n_classes, pretrained = True):
         super(cusResNet50, self).__init__(n_classes, pretrained)
         resnet = torchvision.models.resnet50(pretrained=pretrained)
-        resnet.fc = nn.Linear(resnet.fc.in_features, n_classes)
+
+        resnet.fc = nn.Linear(resnet.fc.in_features, self.bottleneck_dim)
+        self.fc = nn.Linear(self.bottleneck_dim, n_classes)
 
         self.avgpool = resnet.avgpool
         self.returnkey_avg = 'avgpool'
@@ -47,20 +49,14 @@ class cusDenseNet121(cusResNet18):
         super(cusDenseNet121, self).__init__(n_classes, pretrained)
         resnet = torchvision.models.densenet121(pretrained=pretrained)
         
-        resnet.classifier = nn.Linear(resnet.classifier.in_features, n_classes)
+        resnet.fc = nn.Linear(resnet.fc.in_features, self.bottleneck_dim)
+        self.fc = nn.Linear(self.bottleneck_dim, n_classes)
        
-        self.returnkey_fc = 'classifier'
+        self.avgpool = resnet.avgpool
+        self.returnkey_avg = 'avgpool'
+        self.returnkey_fc = 'fc'
         self.body = create_feature_extractor(
-            resnet, return_nodes={'classifier': self.returnkey_fc})
-    
-    def forward(self, x):
-        outputs = self.body(x)
-        return outputs[self.returnkey_fc], outputs[self.returnkey_fc]
-
-    def inference(self, x):
-        outputs = self.body(x)
-        return outputs[self.returnkey_fc], outputs[self.returnkey_fc]
-
+            resnet, return_nodes={'avgpool': self.returnkey_avg, 'fc': self.returnkey_fc})
 
 class MLPclassifer(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):

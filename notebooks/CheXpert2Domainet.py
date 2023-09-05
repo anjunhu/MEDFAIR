@@ -11,7 +11,8 @@ import time
 from tqdm import tqdm
 
 DOMAIN = 'chexpert'
-for TARGET_ATTRIBUTE in ['Atelectasis' ,'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']:
+ATTRIBUTES = ['Atelectasis' ,'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
+for TARGET_ATTRIBUTE in ['Cardiomegaly']:
     for SPLIT in ['train', 'valid']:
         # read metadata
         path = '/home/shared_space/data/CheXpert-v1.0-small/'
@@ -35,11 +36,11 @@ for TARGET_ATTRIBUTE in ['Atelectasis' ,'Cardiomegaly', 'Consolidation', 'Edema'
         print(len(ta[ta==1])/len(ta), len(ta[ta==0])/len(ta), len(ta[ta==-1])/len(ta), len(ta[ta!=ta])/len(ta))
 
         # Ignore Uncertain and Emtpy entires
-        demo_data = demo_data[~demo_data[TARGET_ATTRIBUTE].isnull()]
+        #demo_data = demo_data[~demo_data[TARGET_ATTRIBUTE].isnull()]
+        #assert(len(ta[ta!=ta])==0)
         demo_data = demo_data[demo_data[TARGET_ATTRIBUTE]!=-1.0]
         ta = demo_data[TARGET_ATTRIBUTE].values
         assert(len(ta[ta==-1])==0)
-        assert(len(ta[ta!=ta])==0)
         ta[ta != 1.0] = 0.0
         demo_data[TARGET_ATTRIBUTE] = ta
 
