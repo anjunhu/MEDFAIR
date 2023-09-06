@@ -14,8 +14,9 @@ DATA_DIR = '/home/shared_space/data/physionet.org/files/mimic-cxr-jpg/2.0.0/'
 IGNORE_EMPTY_ENTRIES = False
 VERBOSE = False
 DOMAIN = 'mimic'
+ATTRIBUTES = ['Atelectasis' ,'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
 
-for TARGET_ATTRIBUTE in ['Atelectasis', 'Consolidation', 'Cardiomegaly', 'Edema', 'Pleural Effusion']:
+for TARGET_ATTRIBUTE in ATTRIBUTES:
         # read dataframes
         labels_df = pd.read_csv(DATA_DIR + 'mimic-cxr-2.0.0-chexpert.csv')
         splits_df = pd.read_csv(DATA_DIR + 'mimic-cxr-2.0.0-split.csv')

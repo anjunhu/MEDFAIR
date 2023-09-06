@@ -10,15 +10,19 @@ import pickle
 import time
 from tqdm import tqdm
 
+DATA_DIR = '/home/shared_space/data/CheXpert-v1.0-small/'
+IGNORE_EMPTY_ENTRIES = False
+VERBOSE = False
 DOMAIN = 'chexpert'
 ATTRIBUTES = ['Atelectasis' ,'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
-for TARGET_ATTRIBUTE in ['Cardiomegaly']:
+
+for TARGET_ATTRIBUTE in ATTRIBUTES:
     for SPLIT in ['train', 'valid']:
         # read metadata
-        path = '/home/shared_space/data/CheXpert-v1.0-small/'
-        #demo_data = pd.read_csv(path + f'{SPLIT}.csv')
-        train_df = pd.read_csv(path + f'train.csv')
-        valid_df = pd.read_csv(path + f'valid.csv')
+        DATA_DIR = '/home/shared_space/data/CheXpert-v1.0-small/'
+        #demo_data = pd.read_csv(DATA_DIR + f'{SPLIT}.csv')
+        train_df = pd.read_csv(DATA_DIR + f'train.csv')
+        valid_df = pd.read_csv(DATA_DIR + f'valid.csv')
         demo_data = pd.concat([train_df, valid_df])
 
         # remove age/sex == null
@@ -36,8 +40,9 @@ for TARGET_ATTRIBUTE in ['Cardiomegaly']:
         print(len(ta[ta==1])/len(ta), len(ta[ta==0])/len(ta), len(ta[ta==-1])/len(ta), len(ta[ta!=ta])/len(ta))
 
         # Ignore Uncertain and Emtpy entires
-        #demo_data = demo_data[~demo_data[TARGET_ATTRIBUTE].isnull()]
-        #assert(len(ta[ta!=ta])==0)
+        if IGNORE_EMPTY_ENTRIES:
+            demo_data = demo_data[~demo_data[TARGET_ATTRIBUTE].isnull()]
+            assert(len(ta[ta!=ta])==0)
         demo_data = demo_data[demo_data[TARGET_ATTRIBUTE]!=-1.0]
         ta = demo_data[TARGET_ATTRIBUTE].values
         assert(len(ta[ta==-1])==0)
@@ -63,22 +68,28 @@ for TARGET_ATTRIBUTE in ['Cardiomegaly']:
         demo_data['Age_binary'] = np.where(demo_data['Age_binary'].between(-1, 60), 0, demo_data['Age_binary'])
         demo_data['Age_binary'] = np.where(demo_data['Age_binary']>= 60, 1, demo_data['Age_binary'])
 
+        # A peek at post-binarization training set P(A), P(Y), P(Y, A)
+        for sa in range(5):
+            df_sa = demo_data[demo_data['Age_multi'] == sa]
+            df_y0 = demo_data[(demo_data['binaryLabel']==0) & (demo_data['Age_multi'] == sa)]
+            df_y1 = demo_data[(demo_data['binaryLabel']==1) & (demo_data['Age_multi'] == sa)]
+            print(ta, 'TRAIN', f'A{sa}', len(df_sa), f'A{sa}Y0', len(df_y0), f'A{sa}Y1', len(df_y1))
+
         lines = []
         start = time.time()
         ta = TARGET_ATTRIBUTE.replace(' ', '')
-        path = '/home/shared_space/data/'
         for i in tqdm(range(len(demo_data))):
-            os.makedirs(os.path.join(f'domainnet_style_datasets_{ta}', DOMAIN, str(int(demo_data.iloc[i]['binaryLabel']))), exist_ok=True) 
-            img = cv2.imread(path + demo_data.iloc[i]['Path'])
+            os.makedirs(os.path.join('domainnet_style_datasets', ta, DOMAIN, str(int(demo_data.iloc[i]['binaryLabel']))), exist_ok=True) 
+            img = cv2.imread(os.path.join(DATA_DIR, "..", demo_data.iloc[i]['Path']))
             # resize to the input size in advance to save time during training
             img = cv2.resize(img, (256, 256))
             filename = demo_data.iloc[i]['Path'].split("/")
             filename = os.path.join(DOMAIN, str(int(demo_data.iloc[i]['binaryLabel'])), '_'.join(filename[-3:]))
             lines.append(filename+' '+str(int(demo_data.iloc[i]['binaryLabel']))+' '+str(int(demo_data.iloc[i]['Age_multi'])))
-            print(lines[-1])
-            cv2.imwrite(os.path.join(f'domainnet_style_datasets_{ta}', filename), img)
+            #print(lines[-1])
+            cv2.imwrite(os.path.join(f'domainnet_style_datasets', ta, filename), img)
         end = time.time()
         print('Time Elapsed', end-start)
 
-        with open('/home/scat9241/repos/MEDFAIR/' + f'domainnet_style_datasets_{ta}/chexpert_list.txt', 'w') as f:
+        with open('/home/scat9241/repos/MEDFAIR/' + f'domainnet_style_datasets/{ta}/chexpert_list.txt', 'w') as f:
             f.write('\n'.join(lines))
