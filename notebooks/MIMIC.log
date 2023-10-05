@@ -1,0 +1,125 @@
+Total images after inclusion/exclusion criteria: 28853
+Total patients after inclusion/exclusion criteria: 12642
+RangeIndex(start=0, stop=28853, step=1)
+
+
+
+ Atelectasis ONES ZEROS NEGONES NANS
+1193 34 289 4453
+0.19986597420003352 0.005696096498575976 0.04841682023789579 0.7460211090634947
+Time Elapsed:  257.3992021083832
+Atelectasis train size 4544 val size 1136
+Atelectasis Age Y0 Y1 Total
+A0 29 0 29
+A1 707 70 777
+A2 1374 295 1669
+A3 1559 494 2053
+A4 818 334 1152
+Atelectasis Sex Y0 Y1 Total
+A0 2345 697 3042
+A1 2142 496 2638
+Atelectasis Race Y0 Y1 Total
+A0 2345 697 3042
+A1 2142 496 2638
+A2 0 0 0
+Time Elapsed 9.120526790618896
+Total images after inclusion/exclusion criteria: 28853
+Total patients after inclusion/exclusion criteria: 12642
+RangeIndex(start=0, stop=28853, step=1)
+
+
+
+ Cardiomegaly ONES ZEROS NEGONES NANS
+1048 477 164 4280
+0.17557379795610656 0.07991288323002178 0.02747528899313118 0.7170380298207405
+Time Elapsed:  256.20360350608826
+Cardiomegaly train size 4644 val size 1161
+Cardiomegaly Age Y0 Y1 Total
+A0 29 0 29
+A1 742 47 789
+A2 1430 259 1689
+A3 1711 403 2114
+A4 845 339 1184
+Cardiomegaly Sex Y0 Y1 Total
+A0 2540 575 3115
+A1 2217 473 2690
+Cardiomegaly Race Y0 Y1 Total
+A0 2540 575 3115
+A1 2217 473 2690
+A2 0 0 0
+Time Elapsed 9.318700551986694
+Total images after inclusion/exclusion criteria: 28853
+Total patients after inclusion/exclusion criteria: 12642
+RangeIndex(start=0, stop=28853, step=1)
+
+
+
+ Consolidation ONES ZEROS NEGONES NANS
+277 227 104 5361
+0.04640643323839839 0.03802982074049255 0.01742335399564416 0.8981403920254649
+Time Elapsed:  258.5713610649109
+Consolidation train size 4692 val size 1173
+Consolidation Age Y0 Y1 Total
+A0 29 0 29
+A1 775 15 790
+A2 1628 80 1708
+A3 2027 92 2119
+A4 1129 90 1219
+Consolidation Sex Y0 Y1 Total
+A0 2975 164 3139
+A1 2613 113 2726
+Consolidation Race Y0 Y1 Total
+A0 2975 164 3139
+A1 2613 113 2726
+A2 0 0 0
+Time Elapsed 9.423614263534546
+Total images after inclusion/exclusion criteria: 28853
+Total patients after inclusion/exclusion criteria: 12642
+RangeIndex(start=0, stop=28853, step=1)
+
+
+
+ Edema ONES ZEROS NEGONES NANS
+641 593 317 4418
+0.10738817222315296 0.09934662422516334 0.05310772323672307 0.7401574803149606
+Time Elapsed:  255.87188506126404
+Edema train size 4521 val size 1131
+Edema Age Y0 Y1 Total
+A0 29 0 29
+A1 771 18 789
+A2 1521 139 1660
+A3 1844 206 2050
+A4 846 278 1124
+Edema Sex Y0 Y1 Total
+A0 2681 350 3031
+A1 2330 291 2621
+Edema Race Y0 Y1 Total
+A0 2681 350 3031
+A1 2330 291 2621
+A2 0 0 0
+Time Elapsed 9.111359119415283
+Total images after inclusion/exclusion criteria: 28853
+Total patients after inclusion/exclusion criteria: 12642
+RangeIndex(start=0, stop=28853, step=1)
+
+
+
+ Pleural Effusion ONES ZEROS NEGONES NANS
+1309 629 167 3864
+0.21929971519517508 0.10537778522365555 0.02797788574300553 0.6473446138381639
+Time Elapsed:  257.8371181488037
+PleuralEffusion train size 4641 val size 1161
+PleuralEffusion Age Y0 Y1 Total
+A0 29 0 29
+A1 720 60 780
+A2 1413 272 1685
+A3 1633 474 2107
+A4 698 503 1201
+PleuralEffusion Sex Y0 Y1 Total
+A0 2397 700 3097
+A1 2096 609 2705
+PleuralEffusion Race Y0 Y1 Total
+A0 2397 700 3097
+A1 2096 609 2705
+A2 0 0 0
+Time Elapsed 9.302465438842773

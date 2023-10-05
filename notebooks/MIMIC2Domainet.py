@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 DATA_DIR = '/home/shared_space/data/physionet.org/files/mimic-cxr-jpg/2.0.0/'
 IGNORE_EMPTY_ENTRIES = False
-VERBOSE = False
+VERBOSE = True
 DOMAIN = 'mimic'
 ATTRIBUTES = ['Atelectasis' ,'Cardiomegaly', 'Consolidation', 'Edema', 'Pleural Effusion']
 
@@ -41,22 +41,27 @@ for TARGET_ATTRIBUTE in ATTRIBUTES:
         merged_df = merged_df[~merged_df.subject_id.isin(inconsistent_race)]
         merged_df = merged_df[merged_df.race.isin(['ASIAN','BLACK/AFRICAN AMERICAN','WHITE'])]
         merged_df = merged_df[merged_df.ViewPosition.isin(['AP','PA'])]
+        merged_df.reset_index(inplace=True)
         if VERBOSE:
             print("Total images after inclusion/exclusion criteria: " + str(len(merged_df)))
             print("Total patients after inclusion/exclusion criteria: " + str(merged_df.subject_id.nunique()))
-            print(merged_df)
-            print(merged_df.dtypes)
+            #print(pd.unique(merged_df['race']))
+            print(merged_df.index)
+
+        start = time.time()
 
         images = []
         paths = []
         binaryLabels = []
-        start = time.time()
         path = '/home/shared_space/data/physionet.org/files/mimic-cxr-jpg/2.0.0/files/'
+        remover = []
         for i in tqdm(range(len(merged_df))):
             p2jpg = os.path.join(DATA_DIR, 'files', 'p'+str(merged_df.iloc[i]['subject_id'])[:2], 'p'+str(merged_df.iloc[i]['subject_id']),
                                           's'+str(merged_df.iloc[i]['study_id']), str(merged_df.iloc[i]['dicom_id'])+'.jpg')
             if not os.path.isfile(p2jpg):
-                break
+                remover.append(i)
+                #print(f'Dropping entry {i} due to missing file!')
+                continue
             img = cv2.imread(os.path.join(DATA_DIR, 'files', 'p'+str(merged_df.iloc[i]['subject_id'])[:2], 'p'+str(merged_df.iloc[i]['subject_id']),
                                           's'+str(merged_df.iloc[i]['study_id']), str(merged_df.iloc[i]['dicom_id'])+'.jpg'))
             # resize to the input size in advance to save time during training
@@ -65,16 +70,18 @@ for TARGET_ATTRIBUTE in ATTRIBUTES:
             paths.append(p2jpg)
             binaryLabels.append(float(merged_df.iloc[i][TARGET_ATTRIBUTE]))
 
-        merged_df = merged_df.head(len(images))
+        merged_df.drop(remover, inplace=True)
+        assert(len(merged_df) == len(images))
         merged_df['image'] = images
         merged_df['path'] = paths
         merged_df[TARGET_ATTRIBUTE] = binaryLabels
+        #print(merged_df)
 
         # Get some pre-binarization P(Y) stats
         ta = merged_df[TARGET_ATTRIBUTE].values
         if VERBOSE:
-            print('\nTARGET_ATTRIBUTE', 'ONES', 'ZEROS', 'NEGONES', 'NANS')
-            print(TARGET_ATTRIBUTE, '\n', len(ta[ta==1]), len(ta[ta==0]), len(ta[ta==-1]), len(ta[ta!=ta]))
+            print('\n\n\n', TARGET_ATTRIBUTE, 'ONES', 'ZEROS', 'NEGONES', 'NANS')
+            print(len(ta[ta==1]), len(ta[ta==0]), len(ta[ta==-1]), len(ta[ta!=ta]))
             print(len(ta[ta==1])/len(ta), len(ta[ta==0])/len(ta), len(ta[ta==-1])/len(ta), len(ta[ta!=ta])/len(ta))
 
         # Binarize Target Attribute
@@ -106,10 +113,17 @@ for TARGET_ATTRIBUTE in ATTRIBUTES:
         merged_df['Age_binary'] = merged_df['anchor_age'].values.astype('int')
         merged_df['Age_binary'] = np.where(merged_df['Age_binary'].between(-1, 60), 0, merged_df['Age_binary'])
         merged_df['Age_binary'] = np.where(merged_df['Age_binary']>= 60, 1, merged_df['Age_binary'])
+        merged_df['Sex_binary'] = merged_df['gender']
+        merged_df['Sex_binary'] = np.where(merged_df['Sex_binary']=='M', 0, merged_df['Sex_binary'])
+        merged_df['Sex_binary'] = np.where(merged_df['Sex_binary']=='F', 1, merged_df['Sex_binary'])
+        merged_df['Race'] = merged_df['race']
+        merged_df['Race'] = np.where(merged_df['Race']=="BLACK/AFRICAN AMERICAN", 0, merged_df['Race'])
+        merged_df['Race'] = np.where(merged_df['Race']=="WHITE", 1, merged_df['Race'])
+        merged_df['Race'] = np.where(merged_df['Race']=="ASIAN", 2, merged_df['Race'])
 
         end = time.time()
         if VERBOSE: print('Time Elapsed: ', end-start)
-        ta = TARGET_ATTRIBUTE.replace(' ', '_')
+        ta = TARGET_ATTRIBUTE.replace(' ', '')
         # Option 1: DIY splits to have controllabe val size and consistent P(Y), P(A), P(Y, A) in training and validation sets
         merged_df_train, merged_df_valid = train_test_split(merged_df, test_size=0.2)
         # Option 2: Use official splits
@@ -119,11 +133,24 @@ for TARGET_ATTRIBUTE in ATTRIBUTES:
         print(ta, 'train size', len(merged_df_train), 'val size', len(merged_df_valid))
 
         # A peek at post-binarization training set P(A), P(Y), P(Y, A)
+        print(ta, 'Age', 'Y0', 'Y1', 'Total')
         for sa in range(5):
-            df_sa = merged_df_train[merged_df_train['Age_multi'] == sa]
-            df_y0 = merged_df_train[(merged_df_train['binaryLabel']==0) & (merged_df_train['Age_multi'] == sa)]
-            df_y1 = merged_df_train[(merged_df_train['binaryLabel']==1) & (merged_df_train['Age_multi'] == sa)]
-            print(ta, 'TRAIN', f'A{sa}', len(df_sa), f'A{sa}Y0', len(df_y0), f'A{sa}Y1', len(df_y1))
+            df_sa = merged_df[merged_df['Age_multi'] == sa]
+            df_y0 = merged_df[(merged_df['binaryLabel']==0) & (merged_df['Age_multi'] == sa)]
+            df_y1 = merged_df[(merged_df['binaryLabel']==1) & (merged_df['Age_multi'] == sa)]
+            print(f'A{sa}', len(df_y0), len(df_y1), len(df_sa))
+        print(ta, 'Sex', 'Y0', 'Y1', 'Total')
+        for sa in range(2):
+            df_sa = merged_df[merged_df['Sex_binary'] == sa]
+            df_y0 = merged_df[(merged_df['binaryLabel']==0) & (merged_df['Sex_binary'] == sa)]
+            df_y1 = merged_df[(merged_df['binaryLabel']==1) & (merged_df['Sex_binary'] == sa)]
+            print(f'A{sa}', len(df_y0), len(df_y1), len(df_sa))
+        print(ta, 'Race', 'Y0', 'Y1', 'Total')
+        for sa in range(3):
+            df_sa = merged_df[merged_df['Race'] == sa]
+            df_y0 = merged_df[(merged_df['binaryLabel']==0) & (merged_df['Race'] == sa)]
+            df_y1 = merged_df[(merged_df['binaryLabel']==1) & (merged_df['Race'] == sa)]
+            print(f'A{sa}', len(df_y0), len(df_y1), len(df_sa))
 
         dataset_name = 'MIMIC_CXR-IgnoreEmpty' if IGNORE_EMPTY_ENTRIES else 'MIMIC_CXR'
         with open('/home/scat9241/repos/MEDFAIR/' + f'pickled_datasets/{dataset_name}/train_{ta}.pkl', 'wb') as f:
@@ -140,12 +167,12 @@ for TARGET_ATTRIBUTE in ATTRIBUTES:
             filename = merged_df.iloc[i]['path']
             filename = '_'.join(filename.split("/")[-4:])
             filename = os.path.join(DOMAIN, str(int(merged_df.iloc[i]['binaryLabel'])), filename)
-            lines.append(filename+' '+str(int(merged_df.iloc[i]['binaryLabel']))+' '+str(int(merged_df.iloc[i]['Age_multi'])))
-            if VERBOSE: print(lines[-1])
+            lines.append(filename+' '+str(int(merged_df.iloc[i]['binaryLabel']))+' '+str(int(merged_df.iloc[i]['Age_multi']))+\
+                                  ' '+str(int(merged_df.iloc[i]['Sex_binary']))+' '+str(int(merged_df.iloc[i]['Race'])))
+            #if VERBOSE: print(lines[-1])
             cv2.imwrite(os.path.join('domainnet_style_datasets', ta, filename), img)
         end = time.time()
         if VERBOSE: print('Time Elapsed', end-start)
 
-        with open('/home/scat9241/repos/MEDFAIR/' + f'domainnet_style_datasets/{ta}/{DOMAIN}_list.txt', 'w') as f:
+        with open(f'domainnet_style_datasets/{ta}/{DOMAIN}_list.txt', 'w') as f:
             f.write('\n'.join(lines))
-
